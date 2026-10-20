@@ -34,9 +34,14 @@
           </span>
         </a>
 
-        <div class="save-state" id="saveState" aria-live="polite">
-          <span class="save-dot"></span>
-          <span>Mentve helyben</span>
+        <div class="topbar-actions">
+          <div class="save-state" id="saveState" aria-live="polite">
+            <span class="save-dot"></span>
+            <span>Mentve helyben</span>
+          </div>
+          <button class="account-button" id="accountButton" type="button" aria-label="Közös tracker beállításai" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+          </button>
         </div>
       </header>
 
@@ -148,7 +153,7 @@
       </section>
 
       <footer class="app-footer">
-        <p><span></span> Adataid csak ebben a böngészőben maradnak.</p>
+        <p><span class="footer-dot"></span> <span id="dataNotice">Adataid csak ebben a böngészőben maradnak.</span></p>
         <p>Ritmus / <span id="footerYear"></span></p>
       </footer>
     </main>
@@ -169,8 +174,67 @@
       </div>
     </dialog>
 
+    <div class="cloud-gate" id="cloudGate" role="dialog" aria-modal="true" aria-label="Közös tracker beállítása" hidden>
+      <section class="cloud-card">
+        <div class="cloud-brand" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+
+        <div id="loginPanel">
+          <p class="section-kicker">KÖZÖS RITMUS</p>
+          <h2 id="cloudTitle">Lépj be a trackerbe</h2>
+          <p class="cloud-description">E-mailben kapsz egy egyszer használható belépési linket. Nincs szükség jelszóra.</p>
+          <form class="cloud-form" id="loginForm">
+            <label for="emailInput">E-mail-cím</label>
+            <input id="emailInput" name="email" type="email" autocomplete="email" inputmode="email" placeholder="nev@email.hu" required />
+            <button class="primary-button" type="submit">Belépési link küldése</button>
+          </form>
+        </div>
+
+        <div id="householdPanel" hidden>
+          <p class="section-kicker">ELSŐ LÉPÉS</p>
+          <h2>Hozzatok létre közös trackert</h2>
+          <p class="cloud-description">Egyikőtök létrehozza, a másik pedig a kapott meghívókóddal csatlakozik.</p>
+          <button class="primary-button" id="createHouseholdButton" type="button">Új közös tracker létrehozása</button>
+          <div class="cloud-divider"><span>vagy</span></div>
+          <form class="cloud-form" id="joinHouseholdForm">
+            <label for="inviteCodeInput">Meghívókód</label>
+            <input id="inviteCodeInput" name="invite" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Például: A1B2C3D4E5F6" maxlength="12" required />
+            <button class="secondary-button" type="submit">Csatlakozás</button>
+          </form>
+        </div>
+
+        <p class="cloud-message" id="cloudMessage" role="status" aria-live="polite"></p>
+      </section>
+    </div>
+
+    <dialog class="account-dialog" id="accountDialog">
+      <div class="account-card">
+        <div class="dialog-header">
+          <div>
+            <p class="section-kicker">KÖZÖS TRACKER</p>
+            <h2 id="householdName">Közös ritmus</h2>
+          </div>
+          <button class="dialog-close" id="accountClose" type="button" aria-label="Bezárás">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div class="account-content">
+          <p class="account-email" id="accountEmail"></p>
+          <div class="invite-box">
+            <span>Meghívókód</span>
+            <strong id="inviteCode">—</strong>
+            <button class="secondary-button" id="copyInviteButton" type="button">Meghívólink másolása</button>
+          </div>
+          <p class="account-hint">Küldd el a linket a barátnődnek. Belépés után automatikusan ugyanahhoz a trackerhez csatlakozik.</p>
+          <button class="text-button" id="signOutButton" type="button">Kijelentkezés</button>
+        </div>
+      </div>
+    </dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite">Mentve</div>
 
+    <script src="supabase-config.js"></script>
     <script src="app.js"></script>
     <script src="pwa-register.js"></script>
   </body>

@@ -1,9 +1,11 @@
-const CACHE_NAME = "ritmus-shell-v2";
+const CACHE_NAME = "ritmus-shell-v3";
+const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./supabase-config.js",
   "./pwa-register.js",
   "./manifest.webmanifest",
   "./favicon.svg",
@@ -35,7 +37,22 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const requestUrl = new URL(request.url);
 
-  if (request.method !== "GET" || requestUrl.origin !== self.location.origin) return;
+  if (request.method !== "GET") return;
+
+  if (requestUrl.href === SUPABASE_CDN) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(request);
+        if (response.ok) cache.put(request, response.clone());
+        return response;
+      }),
+    );
+    return;
+  }
+
+  if (requestUrl.origin !== self.location.origin) return;
 
   if (request.mode === "navigate") {
     event.respondWith(

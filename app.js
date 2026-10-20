@@ -88,15 +88,26 @@ const GROUPS = [
 
 const DAY_NAMES = ["Hét", "Ked", "Sze", "Csü", "Pén", "Szo", "Vas"];
 const STORAGE_KEY = "ritmus-vitamin-tracker-v1";
+const PENDING_STORAGE_KEY = "ritmus-vitamin-pending-v1";
+const MIGRATION_STORAGE_PREFIX = "ritmus-vitamin-migrated";
+const CLOUD_CAPABLE = location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1";
 const today = stripTime(new Date());
 
 let state = loadState();
+let pendingChanges = loadPendingChanges();
 let activeView = "week";
 let currentWeekStart = startOfWeek(today);
 let currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 let selectedMobileDate = new Date(today);
 let dialogDate = null;
 let toastTimer = null;
+let supabaseClient = null;
+let currentUser = null;
+let household = null;
+let realtimeChannel = null;
+let cloudReady = false;
+let authChangeSubscription = null;
+let isFlushingCloud = false;
 
 const elements = {
   weekTab: document.querySelector("#weekTab"),
@@ -125,11 +136,29 @@ const elements = {
   dialogProgress: document.querySelector("#dialogProgress"),
   dialogHabits: document.querySelector("#dialogHabits"),
   dialogClose: document.querySelector("#dialogClose"),
+  cloudGate: document.querySelector("#cloudGate"),
+  loginPanel: document.querySelector("#loginPanel"),
+  loginForm: document.querySelector("#loginForm"),
+  emailInput: document.querySelector("#emailInput"),
+  householdPanel: document.querySelector("#householdPanel"),
+  createHouseholdButton: document.querySelector("#createHouseholdButton"),
+  joinHouseholdForm: document.querySelector("#joinHouseholdForm"),
+  inviteCodeInput: document.querySelector("#inviteCodeInput"),
+  cloudMessage: document.querySelector("#cloudMessage"),
+  accountButton: document.querySelector("#accountButton"),
+  accountDialog: document.querySelector("#accountDialog"),
+  accountClose: document.querySelector("#accountClose"),
+  accountEmail: document.querySelector("#accountEmail"),
+  householdName: document.querySelector("#householdName"),
+  inviteCode: document.querySelector("#inviteCode"),
+  copyInviteButton: document.querySelector("#copyInviteButton"),
+  signOutButton: document.querySelector("#signOutButton"),
+  dataNotice: document.querySelector("#dataNotice"),
 };
 
 init();
 
-function init() {
+async function init() {
   document.querySelector("#footerYear").textContent = new Date().getFullYear();
 
   document.querySelectorAll("[data-view]").forEach((button) => {
@@ -150,26 +179,61 @@ function init() {
     if (event.key === "ArrowRight" && (event.altKey || event.metaKey)) movePeriod(1);
   });
 
+  elements.loginForm.addEventListener("submit", handleLoginSubmit);
+  elements.createHouseholdButton.addEventListener("click", createHousehold);
+  elements.joinHouseholdForm.addEventListener("submit", joinHousehold);
+  elements.accountButton.addEventListener("click", openAccountDialog);
+  elements.accountClose.addEventListener("click", () => elements.accountDialog.close());
+  elements.accountDialog.addEventListener("click", (event) => {
+    if (event.target === elements.accountDialog) elements.accountDialog.close();
+  });
+  elements.copyInviteButton.addEventListener("click", copyInviteLink);
+  elements.signOutButton.addEventListener("click", signOut);
+  window.addEventListener("online", () => {
+    if (cloudReady) flushPendingChanges();
+  });
+
   render();
+
+  if (CLOUD_CAPABLE) {
+    await initializeCloud();
+  } else {
+    setSaveStatus("Mentve helyben", "local");
+  }
 }
 
-function loadState() {
+function loadState(storageKey = STORAGE_KEY) {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const parsed = JSON.parse(localStorage.getItem(storageKey));
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
   }
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  elements.saveState.classList.add("is-saving");
-  elements.saveState.querySelector("span:last-child").textContent = "Mentés…";
-  window.setTimeout(() => {
-    elements.saveState.classList.remove("is-saving");
-    elements.saveState.querySelector("span:last-child").textContent = "Mentve helyben";
-  }, 420);
+function loadPendingChanges() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PENDING_STORAGE_KEY));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalState() {
+  const storageKey = household ? `${STORAGE_KEY}-${household.id}` : STORAGE_KEY;
+  localStorage.setItem(storageKey, JSON.stringify(state));
+}
+
+function savePendingChanges() {
+  localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pendingChanges));
+}
+
+function setSaveStatus(message, mode = "saved") {
+  elements.saveState.classList.toggle("is-saving", mode === "saving");
+  elements.saveState.classList.toggle("is-offline", mode === "offline");
+  elements.saveState.classList.toggle("is-cloud", mode === "cloud");
+  elements.saveState.querySelector("span:last-child").textContent = message;
 }
 
 function setView(view) {
@@ -468,9 +532,460 @@ function toggleHabit(date, habitId, rerender = true) {
   if (dayState.size) state[key] = [...dayState];
   else delete state[key];
 
-  saveState();
-  showToast(isAdding ? "✓ Bejelölve és mentve" : "Jelölés visszavonva");
+  saveLocalState();
+
+  if (cloudReady) {
+    queueCloudChange(key, habitId, isAdding);
+    setSaveStatus("Szinkronizálás…", "saving");
+    flushPendingChanges();
+    showToast(isAdding ? "✓ Bejelölve · szinkronizálás" : "Jelölés visszavonva");
+  } else {
+    setSaveStatus("Mentve helyben", "local");
+    showToast(isAdding ? "✓ Bejelölve és mentve" : "Jelölés visszavonva");
+  }
+
   if (rerender) render();
+}
+
+async function initializeCloud() {
+  const config = globalThis.RITMUS_SUPABASE_CONFIG;
+
+  if (!globalThis.supabase?.createClient) {
+    try {
+      await loadSupabaseLibrary();
+    } catch {
+      setSaveStatus("Felhő nem elérhető", "offline");
+      elements.dataNotice.textContent = "A felhő nem érhető el; az adatok átmenetileg ezen az eszközön maradnak.";
+      return;
+    }
+  }
+
+  if (!config?.url || !config?.publishableKey || !globalThis.supabase?.createClient) {
+    setSaveStatus("Felhő nem elérhető", "offline");
+    elements.dataNotice.textContent = "A felhő nem érhető el; az adatok átmenetileg ezen az eszközön maradnak.";
+    return;
+  }
+
+  supabaseClient = globalThis.supabase.createClient(config.url, config.publishableKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) {
+    showCloudGate("login");
+    setCloudMessage(humanizeError(error), "error");
+  } else {
+    await handleSession(data.session);
+  }
+
+  const authListener = supabaseClient.auth.onAuthStateChange((_event, session) => {
+    window.setTimeout(() => handleSession(session), 0);
+  });
+  authChangeSubscription = authListener.data.subscription;
+}
+
+function loadSupabaseLibrary() {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+    script.crossOrigin = "anonymous";
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.append(script);
+  });
+}
+
+async function handleSession(session) {
+  const nextUserId = session?.user?.id || null;
+  if (nextUserId === currentUser?.id && household) return;
+
+  currentUser = session?.user || null;
+  cloudReady = false;
+
+  if (!currentUser) {
+    household = null;
+    stopRealtime();
+    elements.accountButton.hidden = true;
+    elements.dataNotice.textContent = "Jelentkezz be a közös szinkronizáláshoz.";
+    setSaveStatus("Belépés szükséges", "offline");
+    showCloudGate("login");
+    return;
+  }
+
+  setSaveStatus("Kapcsolódás…", "saving");
+  const membership = await loadMembership();
+
+  if (!membership) {
+    const inviteFromUrl = new URLSearchParams(location.search).get("invite");
+    if (inviteFromUrl) {
+      elements.inviteCodeInput.value = normalizeInviteCode(inviteFromUrl);
+      await joinHousehold();
+      return;
+    }
+
+    showCloudGate("household");
+    setSaveStatus("Tracker választása", "offline");
+    return;
+  }
+
+  await connectToHousehold(membership);
+}
+
+async function loadMembership() {
+  const { data, error } = await supabaseClient
+    .from("household_members")
+    .select("household_id, household:households(id, name, invite_code)")
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingSchemaError(error)) {
+      showCloudGate("household");
+      setCloudMessage("Az adatbázis még nincs beállítva. Futtasd le a supabase-setup.sql fájlt a Supabase SQL Editorban.", "error");
+    } else {
+      setCloudMessage(humanizeError(error), "error");
+    }
+    return null;
+  }
+
+  return data?.household || null;
+}
+
+async function connectToHousehold(nextHousehold) {
+  household = nextHousehold;
+  elements.cloudGate.hidden = true;
+  elements.accountButton.hidden = false;
+  elements.accountEmail.textContent = currentUser.email || "Bejelentkezett felhasználó";
+  elements.householdName.textContent = household.name;
+  elements.inviteCode.textContent = household.invite_code.toUpperCase();
+  elements.dataNotice.textContent = "Közös, valós időben szinkronizált adatok.";
+  setCloudMessage("");
+
+  await migrateLocalStateOnce();
+  await loadRemoteState();
+  subscribeToRealtime();
+  cloudReady = true;
+  setSaveStatus("Szinkronizálva", "cloud");
+  await flushPendingChanges();
+}
+
+async function handleLoginSubmit(event) {
+  event.preventDefault();
+  if (!supabaseClient) return;
+
+  const email = elements.emailInput.value.trim();
+  if (!email) return;
+
+  setFormBusy(elements.loginForm, true);
+  setCloudMessage("Küldjük a belépési linket…");
+
+  const { error } = await supabaseClient.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: cloudRedirectUrl(),
+    },
+  });
+
+  setFormBusy(elements.loginForm, false);
+  if (error) {
+    setCloudMessage(humanizeError(error), "error");
+    return;
+  }
+
+  setCloudMessage("Elküldtük. Nyisd meg az e-mailben kapott linket ezen az eszközön.", "success");
+}
+
+async function createHousehold() {
+  if (!supabaseClient || !currentUser) return;
+  elements.createHouseholdButton.disabled = true;
+  setCloudMessage("A közös tracker létrehozása…");
+
+  const { data, error } = await supabaseClient.rpc("create_household", { p_name: "Közös ritmus" });
+  elements.createHouseholdButton.disabled = false;
+
+  if (error) {
+    setCloudMessage(humanizeError(error), "error");
+    return;
+  }
+
+  const createdHousehold = Array.isArray(data) ? data[0] : data;
+  if (createdHousehold) await connectToHousehold(createdHousehold);
+}
+
+async function joinHousehold(event) {
+  event?.preventDefault?.();
+  if (!supabaseClient || !currentUser) return;
+
+  const inviteCode = normalizeInviteCode(elements.inviteCodeInput.value || new URLSearchParams(location.search).get("invite"));
+  if (!inviteCode) {
+    setCloudMessage("Írd be a 12 karakteres meghívókódot.", "error");
+    return;
+  }
+
+  setFormBusy(elements.joinHouseholdForm, true);
+  setCloudMessage("Csatlakozás a közös trackerhez…");
+  const { data, error } = await supabaseClient.rpc("join_household", { p_invite_code: inviteCode });
+  setFormBusy(elements.joinHouseholdForm, false);
+
+  if (error) {
+    setCloudMessage(humanizeError(error), "error");
+    return;
+  }
+
+  const joinedHousehold = Array.isArray(data) ? data[0] : data;
+  if (joinedHousehold) {
+    removeInviteFromUrl();
+    await connectToHousehold(joinedHousehold);
+  }
+}
+
+async function signOut() {
+  if (!supabaseClient) return;
+  elements.accountDialog.close();
+  stopRealtime();
+  cloudReady = false;
+  household = null;
+  currentUser = null;
+  state = loadState();
+  render();
+  await supabaseClient.auth.signOut();
+  showCloudGate("login");
+}
+
+async function migrateLocalStateOnce() {
+  const migrationKey = `${MIGRATION_STORAGE_PREFIX}-${household.id}`;
+  if (localStorage.getItem(migrationKey) === "1") return;
+
+  const changes = [];
+  for (const [habitDate, habits] of Object.entries(state)) {
+    for (const habitId of habits) {
+      if (!HABITS.some((habit) => habit.id === habitId)) continue;
+      changes.push({ householdId: household.id, habitDate, habitId, checked: true, updatedAt: new Date().toISOString() });
+    }
+  }
+
+  for (const change of changes) {
+    const { error } = await sendCloudChange(change);
+    if (error) {
+      setSaveStatus("Helyi adatok várakoznak", "offline");
+      return;
+    }
+  }
+
+  localStorage.setItem(migrationKey, "1");
+}
+
+async function loadRemoteState() {
+  const { data, error } = await supabaseClient
+    .from("habit_checks")
+    .select("habit_date, habit_id, is_checked")
+    .eq("household_id", household.id)
+    .eq("is_checked", true);
+
+  if (error) {
+    setSaveStatus("Szinkronhiba", "offline");
+    showToast(humanizeError(error));
+    return;
+  }
+
+  const remoteState = {};
+  for (const row of data || []) {
+    if (!remoteState[row.habit_date]) remoteState[row.habit_date] = [];
+    remoteState[row.habit_date].push(row.habit_id);
+  }
+
+  state = remoteState;
+  saveLocalState();
+  render();
+}
+
+function subscribeToRealtime() {
+  stopRealtime();
+  realtimeChannel = supabaseClient
+    .channel(`habit-checks-${household.id}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "habit_checks",
+        filter: `household_id=eq.${household.id}`,
+      },
+      (payload) => {
+        const row = payload.new || payload.old;
+        if (!row?.habit_date || !row?.habit_id) return;
+        applyCloudRow(row);
+      },
+    )
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") setSaveStatus("Szinkronizálva", "cloud");
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setSaveStatus("Kapcsolódás…", "offline");
+    });
+}
+
+function stopRealtime() {
+  if (supabaseClient && realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+  realtimeChannel = null;
+}
+
+function applyCloudRow(row) {
+  const dayState = new Set(state[row.habit_date] || []);
+  if (row.is_checked) dayState.add(row.habit_id);
+  else dayState.delete(row.habit_id);
+
+  if (dayState.size) state[row.habit_date] = [...dayState];
+  else delete state[row.habit_date];
+
+  saveLocalState();
+  render();
+  if (elements.dayDialog.open) renderDialog();
+}
+
+function queueCloudChange(habitDate, habitId, checked) {
+  const changeKey = `${household.id}:${habitDate}:${habitId}`;
+  pendingChanges[changeKey] = {
+    householdId: household.id,
+    habitDate,
+    habitId,
+    checked,
+    updatedAt: new Date().toISOString(),
+  };
+  savePendingChanges();
+}
+
+async function flushPendingChanges() {
+  if (isFlushingCloud) return;
+
+  if (!cloudReady || !navigator.onLine || !household) {
+    if (Object.keys(pendingChanges).length) setSaveStatus("Szinkronra vár", "offline");
+    return;
+  }
+
+  const changes = Object.entries(pendingChanges)
+    .filter(([, change]) => !change.householdId || change.householdId === household.id)
+    .sort(([, a], [, b]) => a.updatedAt.localeCompare(b.updatedAt));
+  if (!changes.length) {
+    setSaveStatus("Szinkronizálva", "cloud");
+    return;
+  }
+
+  isFlushingCloud = true;
+  setSaveStatus("Szinkronizálás…", "saving");
+  let hadError = false;
+
+  for (const [changeKey, change] of changes) {
+    const { error } = await sendCloudChange(change);
+    if (error) {
+      hadError = true;
+      break;
+    }
+    if (pendingChanges[changeKey]?.updatedAt === change.updatedAt) delete pendingChanges[changeKey];
+    savePendingChanges();
+  }
+
+  if (hadError) {
+    setSaveStatus("Szinkronra vár", "offline");
+  } else {
+    const hasMoreCurrentChanges = Object.values(pendingChanges).some(
+      (change) => !change.householdId || change.householdId === household.id,
+    );
+    if (!hasMoreCurrentChanges) {
+      await loadRemoteState();
+      setSaveStatus("Szinkronizálva", "cloud");
+    }
+  }
+
+  isFlushingCloud = false;
+  if (!hadError && Object.values(pendingChanges).some((change) => !change.householdId || change.householdId === household.id)) {
+    flushPendingChanges();
+  }
+}
+
+function sendCloudChange(change) {
+  return supabaseClient.rpc("set_habit_check", {
+    p_household_id: change.householdId || household.id,
+    p_habit_date: change.habitDate,
+    p_habit_id: change.habitId,
+    p_is_checked: change.checked,
+    p_updated_at: change.updatedAt,
+  });
+}
+
+function showCloudGate(view) {
+  elements.cloudGate.hidden = false;
+  elements.loginPanel.hidden = view !== "login";
+  elements.householdPanel.hidden = view !== "household";
+  if (view === "login") window.setTimeout(() => elements.emailInput.focus(), 40);
+}
+
+function setCloudMessage(message, type = "") {
+  elements.cloudMessage.textContent = message;
+  elements.cloudMessage.className = `cloud-message${type ? ` is-${type}` : ""}`;
+}
+
+function setFormBusy(form, busy) {
+  form.querySelectorAll("input, button").forEach((control) => {
+    control.disabled = busy;
+  });
+}
+
+function openAccountDialog() {
+  if (!household) return;
+  elements.accountEmail.textContent = currentUser?.email || "Bejelentkezett felhasználó";
+  elements.householdName.textContent = household.name;
+  elements.inviteCode.textContent = household.invite_code.toUpperCase();
+  elements.accountDialog.showModal();
+}
+
+async function copyInviteLink() {
+  if (!household) return;
+  const inviteUrl = new URL(location.href);
+  inviteUrl.search = "";
+  inviteUrl.hash = "";
+  inviteUrl.searchParams.set("invite", household.invite_code);
+
+  try {
+    await navigator.clipboard.writeText(inviteUrl.toString());
+    showToast("Meghívólink kimásolva");
+    elements.copyInviteButton.textContent = "Kimásolva ✓";
+    window.setTimeout(() => {
+      elements.copyInviteButton.textContent = "Meghívólink másolása";
+    }, 1600);
+  } catch {
+    showToast(`Meghívókód: ${household.invite_code.toUpperCase()}`);
+  }
+}
+
+function cloudRedirectUrl() {
+  const redirectUrl = new URL(location.href);
+  redirectUrl.hash = "";
+  return redirectUrl.toString();
+}
+
+function normalizeInviteCode(value) {
+  return String(value || "").trim().replace(/\s+/g, "").toLowerCase();
+}
+
+function removeInviteFromUrl() {
+  const url = new URL(location.href);
+  url.searchParams.delete("invite");
+  history.replaceState({}, "", url);
+}
+
+function humanizeError(error) {
+  const message = String(error?.message || "Ismeretlen hiba.");
+  if (/rate limit/i.test(message)) return "Túl sok próbálkozás történt. Várj egy percet, majd próbáld újra.";
+  if (/invalid login|email not confirmed/i.test(message)) return "A belépés nem sikerült. Ellenőrizd az e-mail-címet.";
+  if (/fetch|network/i.test(message)) return "Nincs hálózati kapcsolat. A változás helyben megmarad.";
+  return message;
+}
+
+function isMissingSchemaError(error) {
+  return error?.code === "42P01" || /schema cache|does not exist|Could not find the table/i.test(error?.message || "");
 }
 
 function showToast(message) {
