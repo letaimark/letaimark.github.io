@@ -4,7 +4,7 @@
   --surface: #fbfaf6;
   --surface-strong: #ffffff;
   --ink: #17211b;
-  --muted: #6f776f;
+  --muted: #626a63;
   --line: #d9ddd5;
   --line-soft: #e9ebe5;
   --lime: #b7ed55;
@@ -184,12 +184,12 @@ button:focus-visible,
   margin: 0;
   font-size: clamp(54px, 7vw, 94px);
   font-weight: 670;
-  letter-spacing: -0.075em;
+  letter-spacing: -0.04em;
   line-height: 0.88;
 }
 
 .hero h1 em {
-  color: #607752;
+  color: #526a45;
   font-family: Georgia, "Times New Roman", serif;
   font-weight: 400;
 }
@@ -261,6 +261,7 @@ button:focus-visible,
 }
 
 .progress-spark svg {
+  display: block;
   width: 17px;
   height: 17px;
   fill: none;
@@ -268,6 +269,10 @@ button:focus-visible,
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+.mobile-progress-summary {
+  display: none;
 }
 
 .progress-caption strong,
@@ -425,6 +430,17 @@ button:focus-visible,
   display: block;
 }
 
+.summary-icon svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
 .summary-item strong {
   font-size: 14px;
 }
@@ -521,6 +537,17 @@ button:focus-visible,
   font-size: 13px;
   font-weight: 850;
   letter-spacing: -0.04em;
+}
+
+.habit-glyph svg {
+  display: block;
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .habit-label strong,
@@ -1001,8 +1028,34 @@ button:focus-visible,
 
 @media (max-width: 700px) {
   .app-shell {
-    width: min(100% - 22px, 600px);
-    padding-top: 12px;
+    width: min(100% - 16px, 600px);
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+
+  .ambient-one {
+    width: 260px;
+    height: 260px;
+    top: -170px;
+    right: -60px;
+  }
+
+  .topbar {
+    min-height: 50px;
+    padding: 0 3px 10px;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    padding: 8px;
+  }
+
+  .brand strong {
+    font-size: 16px;
+  }
+
+  .brand small {
+    display: none;
   }
 
   .save-state span:last-child {
@@ -1014,35 +1067,62 @@ button:focus-visible,
   }
 
   .hero {
-    padding: 52px 7px 40px;
-  }
-
-  .hero h1 {
-    font-size: clamp(49px, 16vw, 70px);
-  }
-
-  .hero-description {
-    margin-top: 24px;
-  }
-
-  .progress-orbit {
-    width: 122px;
-    height: 122px;
-  }
-
-  .progress-orbit-inner {
-    width: 107px;
-    height: 107px;
+    display: none;
   }
 
   .tracker-panel {
-    border-radius: 23px;
+    border-radius: 20px;
   }
 
   .panel-toolbar {
     flex-direction: column;
     align-items: stretch;
-    padding: 15px;
+    gap: 10px;
+    padding: 13px;
+  }
+
+  .mobile-progress-summary {
+    display: grid;
+    grid-template-columns: auto 1fr 40px;
+    align-items: center;
+    gap: 11px;
+    min-height: 52px;
+    padding: 2px 2px 8px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .mobile-progress-value {
+    min-width: 64px;
+    font-size: 29px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.04em;
+    line-height: 1;
+  }
+
+  .mobile-progress-copy strong,
+  .mobile-progress-copy span {
+    display: block;
+  }
+
+  .mobile-progress-copy strong {
+    font-size: 12px;
+  }
+
+  .mobile-progress-copy span {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-progress-summary .progress-spark {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    align-self: center;
+    justify-self: center;
+    place-items: center;
+    line-height: 0;
   }
 
   .view-switch {
@@ -1051,10 +1131,18 @@ button:focus-visible,
 
   .view-tab {
     flex: 1;
+    min-height: 44px;
+    padding-top: 8px;
+    padding-bottom: 8px;
   }
 
   .period-nav {
     justify-content: space-between;
+  }
+
+  .period-nav .icon-button {
+    width: 44px;
+    height: 44px;
   }
 
   .period-label {
@@ -1063,18 +1151,7 @@ button:focus-visible,
   }
 
   .week-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .summary-item {
-    min-height: 66px;
-    padding: 12px 18px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line-soft);
-  }
-
-  .summary-item:last-child {
-    border-bottom: 0;
+    display: none;
   }
 
   .tracker-table-wrap {
@@ -1083,20 +1160,21 @@ button:focus-visible,
 
   .mobile-day-view {
     display: block;
-    padding: 18px 16px 22px;
+    padding: 14px 13px 18px;
   }
 
   .mobile-days {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: 5px;
-    margin-bottom: 18px;
+    margin-bottom: 13px;
   }
 
   .mobile-day-tab {
     display: flex;
     min-width: 0;
-    padding: 8px 2px;
+    min-height: 48px;
+    padding: 7px 2px;
     flex-direction: column;
     align-items: center;
     gap: 4px;
@@ -1125,11 +1203,12 @@ button:focus-visible,
   }
 
   .mobile-habit-group + .mobile-habit-group {
-    margin-top: 11px;
+    margin-top: 8px;
   }
 
   .mobile-habit-group .routine-group-title {
-    padding: 2px 5px 7px;
+    min-height: 24px;
+    padding: 1px 5px 5px;
   }
 
   .mobile-habit-list {
@@ -1142,7 +1221,7 @@ button:focus-visible,
   .mobile-habit {
     display: flex;
     width: 100%;
-    min-height: 70px;
+    min-height: 64px;
     align-items: center;
     gap: 12px;
     padding: 10px 13px;
@@ -1171,13 +1250,7 @@ button:focus-visible,
   }
 
   .month-stat {
-    display: block;
-    text-align: right;
-  }
-
-  .month-stat span,
-  .month-stat small {
-    display: block;
+    display: none;
   }
 
   .calendar-weekdays {
@@ -1209,8 +1282,7 @@ button:focus-visible,
   }
 
   .app-footer {
-    flex-direction: column;
-    gap: 8px;
+    display: none;
   }
 
   .dialog-header,
@@ -1222,6 +1294,29 @@ button:focus-visible,
   .dialog-progress {
     margin-left: 20px;
     margin-right: 20px;
+  }
+}
+
+@media (max-width: 380px) {
+  .mobile-progress-summary {
+    grid-template-columns: auto 1fr 36px;
+    gap: 8px;
+  }
+
+  .mobile-progress-value {
+    min-width: 57px;
+    font-size: 26px;
+  }
+
+  .mobile-progress-summary .progress-spark {
+    width: 36px;
+    height: 36px;
+  }
+
+  .period-label {
+    padding-right: 5px;
+    padding-left: 5px;
+    font-size: 12px;
   }
 }
 

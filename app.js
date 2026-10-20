@@ -45,7 +45,7 @@ const HABITS = [
     name: "Gyümölcs",
     moment: "Bármikor",
     detail: "Legalább egy adag",
-    glyph: "●",
+    glyph: lucideAppleIcon(),
     color: "#426f3a",
     soft: "#e6f2df",
   },
@@ -114,6 +114,9 @@ const elements = {
   completedCount: document.querySelector("#completedCount"),
   monthTitle: document.querySelector("#monthTitle"),
   monthPercent: document.querySelector("#monthPercent"),
+  mobileProgressValue: document.querySelector("#mobileProgressValue"),
+  mobileProgressLabel: document.querySelector("#mobileProgressLabel"),
+  mobileProgressCount: document.querySelector("#mobileProgressCount"),
   calendarGrid: document.querySelector("#calendarGrid"),
   saveState: document.querySelector("#saveState"),
   toast: document.querySelector("#toast"),
@@ -223,6 +226,9 @@ function renderWeek() {
   elements.heroProgressValue.textContent = `${percent}%`;
   elements.completedCount.textContent = `${completed} / ${total}`;
   elements.progressOrbit.style.background = `conic-gradient(var(--ink) ${percent * 3.6}deg, rgba(23, 33, 27, 0.09) 0deg)`;
+  elements.mobileProgressValue.textContent = `${percent}%`;
+  elements.mobileProgressLabel.textContent = "Heti haladás";
+  elements.mobileProgressCount.textContent = `${completed} / ${total} teljesítve`;
 
   renderWeekSummary(dates, completed, total);
   renderTable(dates);
@@ -247,7 +253,7 @@ function renderWeekSummary(dates, completed, total) {
       <div><strong>${completeDays} teljes nap</strong><span>${completeDays ? "Szép, stabil ritmus" : "Az első teljes nap már közel van"}</span></div>
     </div>
     <div class="summary-item">
-      <div class="summary-icon" aria-hidden="true">●</div>
+      <div class="summary-icon" aria-hidden="true">${lucideAppleIcon()}</div>
       <div><strong>${fruitDays} gyümölcsös nap</strong><span>Legjobb: ${DAY_NAMES[dayIndex(bestDay.date)]} · ${bestDay.score}/5</span></div>
     </div>
   `;
@@ -376,6 +382,9 @@ function renderMonth() {
   elements.periodLabel.textContent = currentMonth.toLocaleDateString("hu-HU", { year: "numeric", month: "long" });
   elements.monthTitle.textContent = currentMonth.toLocaleDateString("hu-HU", { year: "numeric", month: "long" });
   elements.monthPercent.textContent = `${percent}%`;
+  elements.mobileProgressValue.textContent = `${percent}%`;
+  elements.mobileProgressLabel.textContent = "Havi haladás";
+  elements.mobileProgressCount.textContent = `${monthDone} / ${monthTotal} teljesítve`;
 
   elements.calendarGrid.innerHTML = Array.from({ length: 42 }, (_, index) => {
     const date = addDays(gridStart, index);
@@ -557,6 +566,15 @@ function groupTitleTemplate(group, id) {
       <strong>${group.label}</strong>
       <small>${group.note}</small>
     </div>
+  `;
+}
+
+function lucideAppleIcon() {
+  return `
+    <svg class="lucide lucide-apple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 4-8 4-8s-1-4-4-4-2.5 1-4 1-2.5-1-4-1-4 2-4 6 1 7 4 7c1.25 0 2.5-1.06 4-1.06Z" />
+      <path d="M10 2c1 .5 2 2 2 5" />
+    </svg>
   `;
 }
 

@@ -2,7 +2,7 @@
 <html lang="hu">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f3f0e8" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -58,7 +58,7 @@
           </div>
           <div class="progress-caption">
             <span class="progress-spark" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9" /></svg>
+              <svg viewBox="0 0 24 24"><path d="M16 7h6v6" /><path d="m22 7-8.5 8.5-5-5L2 17" /></svg>
             </span>
             <div>
               <strong id="completedCount">0 / 35</strong>
@@ -70,6 +70,17 @@
 
       <section class="tracker-panel" aria-label="Vitamin tracker">
         <div class="panel-toolbar">
+          <div class="mobile-progress-summary" aria-live="polite">
+            <strong class="mobile-progress-value" id="mobileProgressValue">0%</strong>
+            <div class="mobile-progress-copy">
+              <strong id="mobileProgressLabel">Heti haladás</strong>
+              <span id="mobileProgressCount">0 / 35 teljesítve</span>
+            </div>
+            <span class="progress-spark" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M16 7h6v6" /><path d="m22 7-8.5 8.5-5-5L2 17" /></svg>
+            </span>
+          </div>
+
           <div class="view-switch" role="tablist" aria-label="Időszak választása">
             <button
               class="view-tab is-active"
